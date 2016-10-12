@@ -1,101 +1,85 @@
 training=read.csv('training.csv')
 tonnage=read.csv('tonnage.csv')
 inspect_data=read.csv('Inspection.csv')
-# my aim is to find the missing values excluding those which have all the zero entries in TOT_CARS_EAST ..
-length(which(tonnage$TOT_CAR_EAST<tonnage$TOT_TRN_EAST & tonnage$TOT_CAR_EAST!=0 & tonnage$TOT_TRN_EAST!=0))
-# 71 values are such that they have total no of car east is less than total no of trains east
-# we will make both of them zero
-a=which(tonnage$TOT_CAR_EAST<tonnage$TOT_TRN_EAST & tonnage$TOT_CAR_EAST!=0 & tonnage$TOT_TRN_EAST!=0)
-# vector having row no of those rows in which above condition is being satisfied
-# Make them equal to 0
-tonnage$TOT_CAR_EAST[a]=0
-tonnage$TOT_TRN_EAST[a]=0
-a1=which(tonnage$TOT_CAR_WEST<tonnage$TOT_TRN_WEST & tonnage$TOT_CAR_WEST!=0 & tonnage$TOT_TRN_WEST!=0)
-head(tonnage[a1,])
-tail(tonnage[a1,]) # just to check the what we are doing is correct or not 
-length(a1)
-# 2054 data point are satisfying the above condition make them zero
-tonnage$TOT_CAR_WEST[a1]=0
-tonnage$TOT_TRN_WEST[a1]=0
-head(tonnage[a1,])
-tail(tonnage[a1,])
-# so upto now we have found the data points which were violating the condition that the no of cars can't be less than the no of trains in any side either east or west
-# and also put them equal to zero
-length(which(tonnage$TOT_CAR_EAST==0 | tonnage$TOT_CAR_WEST==0 | tonnage$TOT_TRN_EAST==0 | tonnage$TOT_TRN_WEST==0))
-# we got 13517
-ength(which(tonnage$TOT_CAR_EAST==0 & tonnage$TOT_CAR_WEST==0 & tonnage$TOT_TRN_EAST==0 & tonnage$TOT_TRN_WEST==0))
-# we got 9612
-dim(subset(tonnage,tonnage$YEAR==2007 | tonnage$YEAR==2008))
-# we got 9515  11
-length(which(tonnage$TOT_CAR_EAST==0 & tonnage$TOT_CAR_WEST==0 & tonnage$TOT_TRN_EAST==0 & tonnage$TOT_TRN_WEST==0 & tonnage$YEAR!=2007 & tonnage$YEAR!=2008))
-# we got 97  9515+97=9612  which confirms that in other than year 2007 and 2008 we have 97 such data points at which we have no value on CARs and TRNS
-# 13518-9612=3906 data points at which we have not all zero but some of them are zero
-# so my aim is to first predict these data points by using some techniques
-length(which(tonnage$TOT_CAR_EAST==0 & tonnage$TOT_CAR_WEST==0 & tonnage$TOT_TRN_EAST!=0 & tonnage$TOT_TRN_WEST!=0))
-# got 1616 showing that we have 1616 data points which have TOT_Cars =0 but TOT_TRNS has input 
-length(which(tonnage$TOT_CAR_EAST==0 & tonnage$TOT_CAR_WEST==0 & tonnage$TOT_TRN_EAST==0 & tonnage$TOT_TRN_WEST!=0))
-# got 141 such data points at we have only data on TOT_TRN_WEST
-length(which(tonnage$TOT_CAR_EAST==0 & tonnage$TOT_CAR_WEST!=0 & tonnage$TOT_TRN_EAST!=0 & tonnage$TOT_TRN_WEST!=0))
-# 0 shows there is no data point at which only TOT_CARS_EAST is missing
-length(which(tonnage$TOT_CAR_EAST!=0 & tonnage$TOT_CAR_WEST==0 & tonnage$TOT_TRN_EAST!=0 & tonnage$TOT_TRN_WEST!=0))
-# 10 there are 10 data point at which only TOT_CARS_EAST is missing
-length(which(tonnage$TOT_CAR_EAST!=0 & tonnage$TOT_CAR_WEST!=0 & tonnage$TOT_TRN_EAST==0 & tonnage$TOT_TRN_WEST!=0))
-# 0 data points at which there is only TOT_TRNS_EAST is missing
-length(which(tonnage$TOT_CAR_EAST!=0 & tonnage$TOT_CAR_WEST!=0 & tonnage$TOT_TRN_EAST!=0 & tonnage$TOT_TRN_WEST==0))
-# the problem is that sometimes a train carry only 3 cars and some times 1 train carry 111 cars see row no 749 and 1925
-# Now we will divide the tonnage data into more subsets having some characteristics like as no zero, TOT car east is zero etc
-tonnage_prob_no_zero=subset(tonnage,tonnage$TOT_CAR_EAST!=0 & tonnage$TOT_CAR_WEST!=0 & tonnage$TOT_TRN_EAST!=0 & tonnage$TOT_TRN_WEST!=0)
-dim(tonnage_prob_no_zero)
-# 23301 11 shows that 23300 data points have no zeros
-dim(tonnage)
-# 36818 11 
-# 36818-23301=13517 data points have atleast one zero
-tonnage_atleast_one_zero=subset(tonnage,tonnage$TOT_CAR_EAST==0 | tonnage$TOT_CAR_WEST==0 | tonnage$TOT_TRN_EAST==0 | tonnage$TOT_TRN_WEST==0)
-dim(tonnage_atleast_one_zero)
-# 13517 11 confirms the above
-tonnage_prob_all_zero=subset(tonnage_atleast_one_zero,tonnage_atleast_one_zero$TOT_CAR_EAST==0 & tonnage_atleast_one_zero$TOT_CAR_WEST==0 & tonnage_atleast_one_zero$TOT_TRN_EAST==0 & tonnage_atleast_one_zero$TOT_TRN_WEST==0)
-dim(tonnage_prob_all_zero) ## 9611  11  9611 data points are having all zeros
-tonnage_only_Cars_east_0=subset(tonnage_atleast_one_zero,tonnage_atleast_one_zero$TOT_CAR_EAST==0 & tonnage_atleast_one_zero$TOT_CAR_WEST!=0 & tonnage_atleast_one_zero$TOT_TRN_EAST!=0 & tonnage_atleast_one_zero$TOT_TRN_WEST!=0)
-dim(tonnage_only_Cars_east_0) # 0 11 no data having only cars east 0
-tonnage_only_Cars_west_0=subset(tonnage_atleast_one_zero,tonnage_atleast_one_zero$TOT_CAR_EAST!=0 & tonnage_atleast_one_zero$TOT_CAR_WEST==0 & tonnage_atleast_one_zero$TOT_TRN_EAST!=0 & tonnage_atleast_one_zero$TOT_TRN_WEST!=0)
-dim(tonnage_only_Cars_west_0) # 10 11    10 rows has only cars west missing
-tonnage_only_train_east_0=subset(tonnage_atleast_one_zero,tonnage_atleast_one_zero$TOT_CAR_EAST!=0 & tonnage_atleast_one_zero$TOT_CAR_WEST!=0 & tonnage_atleast_one_zero$TOT_TRN_EAST==0 & tonnage_atleast_one_zero$TOT_TRN_WEST!=0)
-dim(tonnage_only_train_east_0) # 0 11 only one have trains east 0
-tonnage_only_train_west_0=subset(tonnage_atleast_one_zero,tonnage_atleast_one_zero$TOT_CAR_EAST!=0 & tonnage_atleast_one_zero$TOT_CAR_WEST!=0 & tonnage_atleast_one_zero$TOT_TRN_EAST!=0 & tonnage_atleast_one_zero$TOT_TRN_WEST==0)
-dim(tonnage_only_train_west_0)  # 143 11  143 rows have only trains west missing
-tonnage_only_cars_missing_both_sides=subset(tonnage_atleast_one_zero,tonnage_atleast_one_zero$TOT_CAR_EAST==0 & tonnage_atleast_one_zero$TOT_CAR_WEST==0 & tonnage_atleast_one_zero$TOT_TRN_EAST!=0 & tonnage_atleast_one_zero$TOT_TRN_WEST!=0)
-dim(tonnage_only_cars_missing_both_sides)## 1616 11   1616 rows have cars missing both sides 
-tonnage_only_trains_missing_both_sides=subset(tonnage_atleast_one_zero,tonnage_atleast_one_zero$TOT_CAR_EAST!=0 & tonnage_atleast_one_zero$TOT_CAR_WEST!=0 & tonnage_atleast_one_zero$TOT_TRN_EAST==0 & tonnage_atleast_one_zero$TOT_TRN_WEST==0)
-dim(tonnage_only_trains_missing_both_sides) ## 1  11 only one data which has trains both sides are missing
-tonnage_only_CarsWest_and_TrainWest_missing=subset(tonnage_atleast_one_zero,tonnage_atleast_one_zero$TOT_CAR_EAST==0 & tonnage_atleast_one_zero$TOT_CAR_WEST!=0 & tonnage_atleast_one_zero$TOT_TRN_EAST==0 & tonnage_atleast_one_zero$TOT_TRN_WEST!=0)
-dim(tonnage_only_CarsWest_and_TrainWest_missing) ### Something Wrong Here
 
-### Something Wrong Here not matching
-### Something Wrong Here
-### Something Wrong Here
-### Something Wrong Here
-### Something Wrong Here
-### Something Wrong Here
-### Something Wrong Here
-### Something Wrong Here
-### Something Wrong Here
+#$$$$$$$$$$$$$$ first we will look at the tonnage data
+summary(tonnage)
+# Year as we can see that minimum year is 2007 and maximum is 2014 whoch is the case in the data also so looks good
+# Month  As we can verify that there is no problem with the month data
+# line segment number is also looking good as its minimum is 1 and max is 4 which we can verify from the data
+# MILe_post_start_and_end also looks good and we can verify that min mile_post_start is less that min mile_post_end  and the same can be assured in the case of max also which should be the case
+# TOT_CAR_EAST_&_TOT_CAR_WEST_&_TOT_TRN_EAST_&_TOT_TRN_WEST In these 4 columns we can observe that in all the columns the minimum is zero and also the 1st quartile is 0 which says that 
+# atleast 25% data has zero entries and we can see that for TOT_DFLT_MGT we have minimum 0.000206 and 1st quartile as 3.720816 which shows us that there is something wrong with these columns
+# so we would like to see those columns
 
+temp_df=tonnage[,c(1,2,7:11)]
+View(temp_df)
+temp_df=temp_df[order(temp_df$YEAR,temp_df$MONTH),]
+View(temp_df)
+# here we can see that in year 2007 and 2008 all the data on TOT_CAR_EAST_&_TOT_CAR_WEST_&_TOT_TRN_EAST_&_TOT_TRN_WEST is zero i.e. there is no movement in this period but we can observe that we are given data on 
+##TOT_DFLT_MGT for year 2007 and 2008 which clearly says that there weight had passed without passing any train which is not correct so we will treat these values as missing values
+## we can also see that in year 2009 data on TOT_CAR_EAST_&_TOT_CAR_WEST is missing upto month of april so we will take these values as missing values. We will try to imput these values using some techniques.
 
-tonnage_only_CarsEast_and_TrainEast_missing=subset(tonnage_atleast_one_zero,tonnage_atleast_one_zero$TOT_CAR_EAST==0 & tonnage_atleast_one_zero$TOT_CAR_WEST!=0 & tonnage_atleast_one_zero$TOT_TRN_EAST==0 & tonnage_atleast_one_zero$TOT_TRN_WEST!=0)
-dim(tonnage_only_CarsEast_and_TrainEast_missing)  # 1  11    only one data 
-tonnage_prob_CarsEastAndWest_TrainsEast_missing=subset(tonnage_atleast_one_zero,tonnage_atleast_one_zero$TOT_CAR_EAST==0 & tonnage_atleast_one_zero$TOT_CAR_WEST==0 & tonnage_atleast_one_zero$TOT_TRN_EAST==0 & tonnage_atleast_one_zero$TOT_TRN_WEST!=0)
-dim(tonnage_prob_CarsEastAndWest_TrainsEast_missing) # 141  11 
-tonnage_prob_CarsWest_TrainsEastAndWest_missing=subset(tonnage_atleast_one_zero,tonnage_atleast_one_zero$TOT_CAR_EAST!=0 & tonnage_atleast_one_zero$TOT_CAR_WEST==0 & tonnage_atleast_one_zero$TOT_TRN_EAST==0 & tonnage_atleast_one_zero$TOT_TRN_WEST==0)
-dim(tonnage_prob_CarsWest_TrainsEastAndWest_missing)  #2  11   
-tonnage_CarsEastAndWest_TrainsWest_missing=subset(tonnage_atleast_one_zero,tonnage_atleast_one_zero$TOT_CAR_EAST==0 & tonnage_atleast_one_zero$TOT_CAR_WEST==0 & tonnage_atleast_one_zero$TOT_TRN_EAST!=0 & tonnage_atleast_one_zero$TOT_TRN_WEST==0)
-dim(tonnage_CarsEastAndWest_TrainsWest_missing)  # 6  11 
-tonnage_CarsEast_TrainsEastAndWest_missing=subset(tonnage_atleast_one_zero,tonnage_atleast_one_zero$TOT_CAR_EAST==0 & tonnage_atleast_one_zero$TOT_CAR_WEST!=0 & tonnage_atleast_one_zero$TOT_TRN_EAST==0 & tonnage_atleast_one_zero$TOT_TRN_WEST==0)
-dim(tonnage_CarsEast_TrainsEastAndWest_missing) # 1 11
+# now we will collect those data ponit on which we have no zeros
+temp_df=subset(temp_df,temp_df$TOT_CAR_EAST!=0 & temp_df$TOT_CAR_WEST!=0 & temp_df$TOT_TRN_EAST!=0 & temp_df$TOT_TRN_WEST!=0)
+View(temp_df)
+dim(temp_df) ## 25356  7 which shows that 25356 data points have all the values 
+cor(temp_df[,3:7])
+## here in the output we can see hogh correlation between TOT_CAR_EAST and TOT_CAR_WEST but we can see in the data that there are too much occurances where both TOT_CAR_EAST and TOT_CAR_WEST are simultaneously zeros
+## So we can not use this as pediction criteria
+## Again we can see that almost 0.5 correlation coefficient in TOT_DFLT_MGT with TOT_TRN_EAST and TOT_TRN_WEST which may be useful
+### But I want to make sure that these all are linear relationship 
+#### As a guess I want to see the correlation of TOT_TRN_EAST+TOT_TRN_WEST with TOT_DFLT_MGT
+temp_df=data.frame(temp_df,total_train=temp_df$TOT_TRN_EAST+temp_df$TOT_TRN_WEST)
+View(temp_df)
+cor(temp_df$TOT_DFLT_MGT,temp_df$total_train)
+# 0.9148062 which shows a high linear relationship in between TOT_DFLT_MGT and total_train so we can use this fact in our missing value imputation method
+## so here we can decide that instead of using TOT_TRN_EAST,TOT_TRN_WEST,TOT_CAR_EAST and TOT_CAR_WEST as independent variables we will use only one variable
+### total_train as it is not so bad as we have used the information on TOT_TRN_EAST and TOT_TRN_WEST and we know that TOT_TRN and TOT_CAR are dependent 
+#### As the TOT_CAR is the number of waigens however TOT_TRN is the number of trains i.e. on TARIN contains too many cars
+plot(temp_df$TOT_DFLT_MGT,temp_df$total_train)
+## Here in the plot we can observe that there are some outlairs thay are 4 in count
+### We awnt to remove them 
+temp_df=subset(temp_df,temp_df$TOT_DFLT_MGT<20)
+plot(temp_df$TOT_DFLT_MGT,temp_df$total_train) ## Yes outlairs removed Party.....Abhi to ...
+# Now I would like to see that is there any values for which are total trains is low but tonnage is extremly high
+temp_df_2=subset(temp_df,temp_df$TOT_TRN_EAST<20 & temp_df$TOT_TRN_WEST<20)
+View(temp_df_2)
+plot(temp_df_2$TOT_DFLT_MGT,temp_df_2$TOT_TRN_EAST+temp_df_2$TOT_TRN_WEST)
+# in the plot we can see that there are no outlier
+temp_df_1=subset(tonnage,tonnage$TOT_CAR_EAST==0| tonnage$TOT_CAR_WEST==0 | tonnage$TOT_TRN_EAST==0 | tonnage$TOT_TRN_WEST==0)
+View(temp_df_1) ## 11462 entries have atleast one 0 in thier last five columns
+## This temp_df_1 is complement of temp_df is we mix them then we will get the whole data
+# so we have to predict the values of total train for given TOT_DFLT_MGT in temp_df_1
+### So we will fit a linear regression model in by taking total train as depeandent variable and TOT_DFLT_MGT as indepandent variable 
+fit=lm(temp_df$total_train~temp_df$TOT_DFLT_MGT)
+summary(fit)
+## In summary we can see that we are getting Adjusted R-squared as 0.8515 meaning that we are able to capture 85% of variation in the data
+### In the summary we can see that intercept term is 96.722 meaning that our model will give atleast 96 total train even if we have no trains are moving
+### Form here we got an inspiration that we can devide the whole data into two parts and after that use regression line
+temp_df_4=subset(temp_df,temp_df$total_train<100)
+View(temp_df_4)
+plot(temp_df_4$total_train,temp_df_4$TOT_DFLT_MGT)
+##in the plot we can observe that there is no linear trend for total_train <100 
+##In the previous we were seeing the data collectively which was looking like a linear trend so we will not use this as a prediction rule 
+### We are interested in behaviour for total_train>=100
+temp_df_5=subset(temp_df,temp_df$total_train>=100)
+View(temp_df_5)
+plot(temp_df_5$total_train,temp_df_5$TOT_DFLT_MGT)
+# we can see the linear pattern but which is not actually linear it collectively looks like linear
+## SO here one question comes into our mind is this data is time series data so we want to check that aspect also
+### I would like to see the behaviour of data at atleast 3-4 points
+#### All these are done in the below section
 
-
-
-
-
+#$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
+temp_df_1=subset(tonnage,tonnage$TOT_CAR_EAST==0| tonnage$TOT_CAR_WEST==0 | tonnage$TOT_TRN_EAST==0 | tonnage$TOT_TRN_WEST==0)
+View(temp_df_1) ## 11462 entries have atleast one 0 in thier last five columns
+temp_df_1=temp_df_1[order(temp_df_1$YEAR, temp_df_1$MONTH),]
+View(temp_df_1) ## 11462 entries have atleast one 0 in thier last five columns
+## In the data we can see that there is missing values at line segment 1 tarck 0 milepost start 61.344 and milepost end 72.788
+### So we would like to gather information on line segment 1 tarck 0 milepost start 61.344 and milepost end 72.788
+data_1_0_28.9_32.0=tonnage_line_track_mileStart_year_month[which(tonnage_line_track_mileStart_year_month$MILEPOST_START==28.9 & tonnage_line_track_mileStart_year_month$MILEPOST_END==32.0 & tonnage_line_track_mileStart_year_month$LINE_SEG_NBR==1 & tonnage_line_track_mileStart_year_month$TRACK_SDTK_NBR==0),]
+#$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
 
 #$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
 #@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
@@ -113,11 +97,6 @@ tonnage1=read.csv("tonnage.csv")
 tonnage_line_track_mileStart=tonnage1[order(tonnage1$LINE_SEG_NBR,tonnage1$TRACK_SDTK_NBR,tonnage1$MILEPOST_START),]
 View(tonnage_line_track_mileStart)
 # here further I also want to sort the by year and then month also
-
-
-
-
-
 tonnage_line_track_mileStart_year_month=tonnage1[order(tonnage1$LINE_SEG_NBR,tonnage1$TRACK_SDTK_NBR,tonnage1$MILEPOST_START,tonnage1$YEAR,tonnage1$MONTH),]
 View(tonnage_line_track_mileStart_year_month) ##36818 ***
 # There is some difference in mile post start at the 3rd place after decimal
@@ -160,6 +139,47 @@ d6=which(is.na(total_trains_east_west))
 length(d6) ## 2376 missing values
 # Now we will add the column total tarins east west in the data frame tonnage_line_...month
 tonnage_line_track_mileStart_year_month=data.frame(tonnage_line_track_mileStart_year_month,total_trains_east_west)
+
+
+# Now we will find the record on that position at which we have missing values
+tonnage_line_track_mileStart_year_month[d6[1],] ## can see that there is missing value at starting MilePost= 28.9
+# collecting record on that position
+data_1_0_28.9_32.0=tonnage_line_track_mileStart_year_month[which(tonnage_line_track_mileStart_year_month$MILEPOST_START==28.9 & tonnage_line_track_mileStart_year_month$MILEPOST_END==32.0 & tonnage_line_track_mileStart_year_month$LINE_SEG_NBR==1 & tonnage_line_track_mileStart_year_month$TRACK_SDTK_NBR==0),]
+data_1_0_28.9_32.0
+# making the total_trains_east_west as a time series data
+ts_1_0_28.9_32.0=ts(data_1_0_28.9_32.0$total_trains_east_west,frequency = 12,start = c(2009))
+ts_1_0_28.9_32.0
+# Now we will plot this time series data
+plot.ts(ts_1_0_28.9_32.0)
+# now we will predict the values of NA's using na.spline()
+ts_1_0_28.9_32.0_pred=ts(ceiling(na.spline(ts_1_0_28.9_32.0)),frequency = 12,start=c(2009))
+ts_1_0_28.9_32.0_pred
+# hEre we can see that we are getting predicted values as 3 which looks like reasonable as it is giving small values as well
+
+# Now we will do the same process for the missing value at the other position
+tonnage_line_track_mileStart_year_month[d6[2],] ## can see that there is missing value at starting MilePost= 28.9
+data_1_0_32_40.7=tonnage_line_track_mileStart_year_month[which(tonnage_line_track_mileStart_year_month$MILEPOST_START==32 & tonnage_line_track_mileStart_year_month$MILEPOST_END==40.7 & tonnage_line_track_mileStart_year_month$LINE_SEG_NBR==1 & tonnage_line_track_mileStart_year_month$TRACK_SDTK_NBR==0),]
+data_1_0_32_40.7
+ts_1_0_32_40.7=ts(data_1_0_32_40.7$total_trains_east_west,frequency = 12,start = c(2009))
+ts_1_0_32_40.7
+plot.ts(ts_1_0_32_40.7)
+na.spline(ts_1_0_32_40.7)
+ts_1_0_32_40.7_pred=ts(ceiling(na.spline(ts_1_0_32_40.7)),frequency = 12,start = 2009)
+ts_1_0_32_40.7_pred
+plot.ts(ts_1_0_32_40.7_pred)
+## As here we can see that we are getting exceptionally hogh value at 2009 JAn as it is greater than the maximum of the series
+### But other values are looking good so we will use this method in predicting missing values.
+## So we have to take care of these situation in making the code 
+## These high values will obviously come as here we are extraploating the values and one more reason is that as we are using na.spline 
+## This function makes a cubic curve taking 4 avalable values and after that using this curve predict the missing values
+## So taking all these care we have made a function which will take care of all these problems
+
+
+## I have made a function which will take a data frame as its argument and returns a dataframe which have interpolated values of total trains
+## As In this we have taken care of all the things but we will have to do manually at some positions as if only 1 yr data is available then this will put all the nas= mean of the data of that year 
+## Which is not correct as we cant interpolate 4/5 year data based on one year data and taking its mean only so we will manually make them as NA and may use regression Analysis to find out these NAs
+## As We have so many spots where we have all the data missing and these were creating problem in running our function na.spline so we have removed those position so that our function can run without any error
+### Actually these are problem of data we can verify them as obsering them
 tonnage_line_track_mileStart_year_month=tonnage_line_track_mileStart_year_month[-which(tonnage_line_track_mileStart_year_month$MILEPOST_START==86.1 & tonnage_line_track_mileStart_year_month$LINE_SEG_NBR==2 & tonnage_line_track_mileStart_year_month$TRACK_SDTK_NBR==1),]
 dim(tonnage_line_track_mileStart_year_month)##27300 12
 tonnage_line_track_mileStart_year_month=tonnage_line_track_mileStart_year_month[-which(tonnage_line_track_mileStart_year_month$MILEPOST_START==26.2 & tonnage_line_track_mileStart_year_month$LINE_SEG_NBR==2 & tonnage_line_track_mileStart_year_month$TRACK_SDTK_NBR==2),]
@@ -888,8 +908,25 @@ View(tonnage_combine_all_years) #36805 ***
 temporary_data=tonnage_combine_all_years[-which(tonnage_combine_all_years$TOT_DFLT_MGT>20),]
 tonnage_combine_all_years[which(tonnage_combine_all_years$TOT_DFLT_MGT>20),11]=mean(temporary_data$TOT_DFLT_MGT)
 tonnage_combine_all_years=tonnage_combine_all_years[order(tonnage_combine_all_years$LINE_SEG_NBR,tonnage_combine_all_years$TRACK_SDTK_NBR,tonnage_combine_all_years$MILEPOST_START,tonnage_combine_all_years$YEAR,tonnage_combine_all_years$MONTH),]
+write.csv(tonnage_combine_all_years,"tonnage_missing_handled.csv")
 
+#$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
+#@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+#@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+#$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
+#$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
+#@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+#@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+#$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
 
+##### Here i think Our Journey of finding missing data is completed and now we will do other works
+# first of all we will divide the whole data set in 3 sub data frames according to Defect Type
+train_surface=subset(training,training$DFCT_TYPE=="SURFACE")
+dim(train_surface) ##7577 14
+train_xlevel=subset(training,training$DFCT_TYPE=="XLEVEL")
+dim(train_xlevel) ## 11909 14
+train_dip=subset(training,training$DFCT_TYPE=="DIP")
+dim(train_dip) ##4361 14
 
 
 
