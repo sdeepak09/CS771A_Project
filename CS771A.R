@@ -1,6 +1,7 @@
 training=read.csv('training.csv')
 tonnage=read.csv('tonnage.csv')
 inspect_data=read.csv('Inspection.csv')
+testing_data=read.csv('testing.csv')
 
 #$$$$$$$$$$$$$$ first we will look at the tonnage data
 summary(tonnage)
@@ -927,8 +928,661 @@ train_xlevel=subset(training,training$DFCT_TYPE=="XLEVEL")
 dim(train_xlevel) ## 11909 14
 train_dip=subset(training,training$DFCT_TYPE=="DIP")
 dim(train_dip) ##4361 14
+# Now I want to Sort my surface data by line segment number after that track after that mile post after that test date in order to find out the repeated deffect
+# We can see that Test format provided is factor so in order to sort by that we have to convert the test variable we have to make it in Date format
+train_surface$TEST_DT=as.Date(train_surface$TEST_DT,format="%d%b%Y")
+train_surface=train_surface[order(train_surface$LINE_SEG_NBR,train_surface$TRACK_SDTK_NBR,train_surface$TEST_DT,train_surface$MILEPOST),]
+View(train_surface)
+# Now we want to see the summary of the data in order to see the types and minimum and maximum of the variables and also the possible errors
+str(train_surface)
+## Gives the structure of the data See this..
+summary(train_surface)
+###### Making given information of thresholds as a data frame
+### These are the values which are given in the Question answers provided by INFORMS
+class1=c(3,3,3)
+class2=c(2.75,2.75,2)
+class3=c(2.25,2.25,1.75)
+class4=c(2,1.75,1.25)
+class5=c(1.25,1.5,1)
+tag_limits=cbind(class1,class2,class3,class4,class5)
+row.names(tag_limits)=c("SURFACE","DIP","XLEVEL")
+tag_limits
+## We will use the tagLimits at later stage may be in prediction function
+feet_mile=0.000189394 # the values of 1 feet in miles
+## This function gives the unique defect positions by using the fact of repeated defects 200 ft wala
+uniq_defect_position1=function(x){
+  d=c(0)
+  x=x[order(x$MILEPOST),]
+  for(i in 1:nrow(x)){
+    l=0
+    for(j in 1:length(d)){
+      if(x[i,2]>=d[j]-100*feet_mile & x[i,2]<=d[j]+100*feet_mile){
+        l=l+1
+      }
+      if(l!=0)
+        break
+    }
+    if(l==0){
+      d=c(d,x[i,2]+100*feet_mile)
+    }
+  }
+  return(d)
+}    # FUNCTION TO FIND OUT UNIQUE DEFECT POSITIONS
+# FUNCTION FOR ASSIGNING UNIQUE DIFFERENT POSITIONS TO THE MILEPOSTS
+## This function assign a unique defect position( find in the above function) to each observation of milepost of data
+mile_post_uniq=function(x,y){
+  m=0
+  for(i in 1:nrow(x)){
+    m=which(y<=x[i,2]+100*feet_mile & y>=x[i,2]-100*feet_mile)
+    x[i,2]=y[m]
+  }
+  return(x)
+} 
+# Now we will sort the surface data by line segment number, track segment number and milepost
+train_surface_line_track_milepost=train_surface[order(train_surface$LINE_SEG_NBR,train_surface$TRACK_SDTK_NBR,train_surface$MILEPOST),]
 
 
+######**************************************************************************************************************************************************************************
+######**************************************************************************************************************************************************************************
+######**************************************************************************************************************************************************************************
+## Some prepocessing (not Complete) For Line segment number 1 and track segment 0
+# we will partition the train_surface data by line_seg=1 and track=0
+train_surface_1_0=subset(train_surface_line_track_milepost,train_surface_line_track_milepost$LINE_SEG_NBR==1 & train_surface_line_track_milepost$TRACK_SDTK_NBR==0)
+# Now we will find the unique defect positions on line segment number 1 and track segment number 0
+uniq_defect_pos_1_0=uniq_defect_position1(train_surface_1_0)
+length(uniq_defect_pos_1_0) ##242
+train_surface_1_0=mile_post_uniq(train_surface_1_0,uniq_defect_pos_1_0)
+## There in the manual it is given that if the inspection is done within a 7 days period of the previous inspection then we will consider it as the same observation
+## we will take care of this factor later
+## Below is the code for removing the same day repeat as there are too many instances where they have reported a defect several timein a day itself
+remove_same_day_repeat=function(x){
+  d=c()
+  m=c()
+  m1=c()
+  m2=c()
+  m3=c()
+  m4=0
+  m5=c()
+  m6=c()
+  d=levels(as.factor(x$TEST_DT))
+  for(i in 1:length(d)){
+    m=0
+    m1=0
+    m2=0
+    m3=0
+    m4=0
+    m5=0
+    m6=0
+    m=which(x[,4]==d[i])
+    m1=levels(as.factor(x[m,2]))
+    for(j in 1:length(m1)){
+      m2=which(x[,2]==m1[j] & x[,4]==d[i])
+      if(length(m2)>1){
+        m3=which(abs(x[,9])==max(abs(x[m2,9])))
+        m6=intersect(m3,m2)
+        if(length(m6)>1){
+          m4=max(x[m6[1],8])
+          x[m6[1],8]=m4
+          m5=m2[m2!=m6[1]]
+          x=x[-m5,]
+        }
+        else{
+          m4=max(x[m6,8])
+          x[m6,8]=m4
+          m5=m2[m2!=m6]
+          x=x[-m5,]
+        }
+      }
+    }
+    
+  }
+  return(x)
+}
+train_surface_1_0_no_day=remove_same_day_repeat(train_surface_1_0) ## data which has no defetcs reported on the same day
+## This function removes those data point which has only one observation means at that point is inspected only once
+remove_single_obs=function(x){
+  d=c()
+  d=levels(as.factor(x$MILEPOST))
+  for(i in 1:length(d)){
+    m=c()
+    m=which(x[,2]==d[i])
+    if(length(m)==1){
+      x=x[-m,]
+    }
+  }
+  return(x)
+}
+train_surface_1_0_no_day_no_single=remove_single_obs(train_surface_1_0_no_day)
+length(levels(as.factor(train_surface_1_0_no_day_no_single$MILEPOST)))  ##135
+## here we have 135 unique defect positions now we will make two datasets one as train and test dataset 80 and 20%
+## To partition the data into two part we have to partition the defect position just think about it ..only this way we can partition
+## Here we want to make you clear that here We will partition the training data into two parts and name it as train data and test data and sometimes we will write test data as vcalidating data and now we have two test data one they have given and other we have made  so dont be confused
+135*0.20 ## 27 unique defect positions will be in our test data and remaining 135-27 willbe in our train data
+d=sample(1:135,27) # SRSWOR sample of size 27 from 135 
+d1=levels(as.factor(train_surface_1_0_no_day_no_single$MILEPOST))
+uniq_pos_train=d1[-d]
+uniq_pos_test=d1[d]
+## Now break the data into two parts train and test data
+train_surface_1_0_no_day_no_single_trn=subset(train_surface_1_0_no_day_no_single,train_surface_1_0_no_day_no_single$MILEPOST %in% uniq_pos_train)
+train_surface_1_0_no_day_no_single_tst=subset(train_surface_1_0_no_day_no_single,train_surface_1_0_no_day_no_single$MILEPOST %in% uniq_pos_test)
+######**************************************************************************************************************************************************************************
+######**************************************************************************************************************************************************************************
+######**************************************************************************************************************************************************************************
+###### I think there are no data for defect type surface and Line 1 and track other than 0
+### So we will move to line segment 2
+## The same we will do for line segment number 2 and track segment 0
+train_surface_2_0=subset(train_surface_line_track_milepost,train_surface_line_track_milepost$LINE_SEG_NBR==2 & train_surface_line_track_milepost$TRACK_SDTK_NBR==0)
+uniq_defect_pos_2_0=uniq_defect_position1(train_surface_2_0)
+length(uniq_defect_pos_2_0) ##462
+train_surface_2_0=mile_post_uniq(train_surface_2_0,uniq_defect_pos_2_0)
+train_surface_2_0_no_day=remove_same_day_repeat(train_surface_2_0)
+train_surface_2_0_no_day_no_single=remove_single_obs(train_surface_2_0_no_day)
+length(levels(as.factor(train_surface_2_0_no_day_no_single$MILEPOST)))  ##249
+## here we have 135 unique defect positions now we will make two datasets one as train and test dataset 80 and 20%
+249*0.20 ##49.8 =~50 unique defect positions will be in our test data and remaining 135-27 willbe in our train data
+sample_pos_2_0=sample(1:249,50) # SRSWOR sample of size 27 from 135 
+uniq_pos_2_0=levels(as.factor(train_surface_2_0_no_day_no_single$MILEPOST))
+uniq_pos_train_2_0=uniq_pos_2_0[-sample_pos_2_0]
+uniq_pos_test_2_0=uniq_pos_2_0[sample_pos_2_0]
+train_surface_2_0_no_day_no_single_trn=subset(train_surface_2_0_no_day_no_single,train_surface_2_0_no_day_no_single$MILEPOST %in% uniq_pos_train_2_0)
+train_surface_2_0_no_day_no_single_tst=subset(train_surface_2_0_no_day_no_single,train_surface_2_0_no_day_no_single$MILEPOST %in% uniq_pos_test_2_0)
+######**************************************************************************************************************************************************************************
+######**************************************************************************************************************************************************************************
+######**************************************************************************************************************************************************************************
+# unique defect position for 2_1
+any(train_surface$LINE_SEG_NBR==2 & train_surface$TRACK_SDTK_NBR==1) ## TRUE Showing that there are data satisfying the conditions
+train_surface_2_1=subset(train_surface_line_track_milepost,train_surface_line_track_milepost$LINE_SEG_NBR==2 & train_surface_line_track_milepost$TRACK_SDTK_NBR==1)
+uniq_defect_pos_2_1=uniq_defect_position1(train_surface_2_1)
+length(uniq_defect_pos_2_1) ## 36 
+train_surface_2_1=mile_post_uniq(train_surface_2_1,uniq_defect_pos_2_1)
+train_surface_2_1_no_day=remove_same_day_repeat(train_surface_2_1)
+train_surface_2_1_no_day_no_single=remove_single_obs(train_surface_2_1_no_day)
+#####################################
+length(levels(as.factor(train_surface_2_1_no_day_no_single$MILEPOST)))  ##22
+22*0.20 ### 4
+sample_pos_2_1=sample(1:22,4) # SRSWOR sample of size 4 from 22 
+uniq_pos_2_1=levels(as.factor(train_surface_2_1_no_day_no_single$MILEPOST))
+uniq_pos_train_2_1=uniq_pos_2_1[-sample_pos_2_1]
+uniq_pos_test_2_1=uniq_pos_2_1[sample_pos_2_1]
+train_surface_2_1_no_day_no_single_trn=subset(train_surface_2_1_no_day_no_single,train_surface_2_1_no_day_no_single$MILEPOST %in% uniq_pos_train_2_1)
+train_surface_2_1_no_day_no_single_tst=subset(train_surface_2_1_no_day_no_single,train_surface_2_1_no_day_no_single$MILEPOST %in% uniq_pos_test_2_1)
+######**************************************************************************************************************************************************************************
+######**************************************************************************************************************************************************************************
+######**************************************************************************************************************************************************************************
+# unique defect position for 2_2
+any(train_surface$LINE_SEG_NBR==2 & train_surface$TRACK_SDTK_NBR==2)
+train_surface_2_2=subset(train_surface_line_track_milepost,train_surface_line_track_milepost$LINE_SEG_NBR==2 & train_surface_line_track_milepost$TRACK_SDTK_NBR==2)
+uniq_defect_pos_2_2=uniq_defect_position1(train_surface_2_2)
+length(uniq_defect_pos_2_2) ## 38
+train_surface_2_2=mile_post_uniq(train_surface_2_2,uniq_defect_pos_2_2)
+train_surface_2_2_no_day=remove_same_day_repeat(train_surface_2_2)
+train_surface_2_2_no_day_no_single=remove_single_obs(train_surface_2_2_no_day)
+length(levels(as.factor(train_surface_2_2_no_day_no_single$MILEPOST))) ## 10
+10*0.20  # 2
+sample_pos_2_2=sample(1:10,2) # SRSWOR sample of size 4 from 22 
+uniq_pos_2_2=levels(as.factor(train_surface_2_2_no_day_no_single$MILEPOST))
+uniq_pos_train_2_2=uniq_pos_2_2[-sample_pos_2_2]
+uniq_pos_test_2_2=uniq_pos_2_2[sample_pos_2_2]
+train_surface_2_2_no_day_no_single_trn=subset(train_surface_2_2_no_day_no_single,train_surface_2_2_no_day_no_single$MILEPOST %in% uniq_pos_train_2_2)
+##### Make  test data set
+train_surface_2_2_no_day_no_single_tst=subset(train_surface_2_2_no_day_no_single,train_surface_2_2_no_day_no_single$MILEPOST %in% uniq_pos_test_2_2)
+######**************************************************************************************************************************************************************************
+######**************************************************************************************************************************************************************************
+######**************************************************************************************************************************************************************************
+# unique defect position for 3_0
+any(train_surface$LINE_SEG_NBR==3 & train_surface$TRACK_SDTK_NBR==0) ## TRUE
+length(which(train_surface$LINE_SEG_NBR==3 & train_surface$TRACK_SDTK_NBR==0)) ##1
+### As here we have only one observation so we can not take it in our analysis
+######**************************************************************************************************************************************************************************
+######**************************************************************************************************************************************************************************
+######**************************************************************************************************************************************************************************
+
+
+## Something different part of preprocessing
+# As the data is not available at some ponits so we had filled that data using the preceeding and successding rows
+## Run these codes on caution as if you run the same code twice then it will creat problem and you ahve to do thing again from starting
+tonnage_combine_all_years=rbind(tonnage_combine_all_years,tonnage_combine_all_years[16853,])
+tonnage_combine_all_years=rbind(tonnage_combine_all_years,tonnage_combine_all_years[16854,])
+tonnage_combine_all_years[36806,2]=6
+tonnage_combine_all_years[36807,2]=8
+tonnage_combine_all_years=rbind(tonnage_combine_all_years,tonnage_combine_all_years[22346,])
+tonnage_combine_all_years=rbind(tonnage_combine_all_years,tonnage_combine_all_years[22347,])
+tonnage_combine_all_years[36808,2]=6
+tonnage_combine_all_years[36809,2]=7
+tonnage_combine_all_years[36807,2]=7
+tonnage_combine_all_years=tonnage_combine_all_years[order(tonnage_combine_all_years$LINE_SEG_NBR,tonnage_combine_all_years$TRACK_SDTK_NBR,tonnage_combine_all_years$MILEPOST_START,tonnage_combine_all_years$YEAR,tonnage_combine_all_years$MONTH),]
+tonnage_combine_all_years=rbind(tonnage_combine_all_years,tonnage_combine_all_years[22441,])
+tonnage_combine_all_years=rbind(tonnage_combine_all_years,tonnage_combine_all_years[22442,])
+tonnage_combine_all_years[36810,2]=6
+tonnage_combine_all_years[36811,2]=7
+tonnage_combine_all_years=tonnage_combine_all_years[order(tonnage_combine_all_years$LINE_SEG_NBR,tonnage_combine_all_years$TRACK_SDTK_NBR,tonnage_combine_all_years$MILEPOST_START,tonnage_combine_all_years$YEAR,tonnage_combine_all_years$MONTH),]
+tonnage_combine_all_years=rbind(tonnage_combine_all_years,tonnage_combine_all_years[16946,])
+tonnage_combine_all_years=rbind(tonnage_combine_all_years,tonnage_combine_all_years[16947,])
+tonnage_combine_all_years[36812,2]=6
+tonnage_combine_all_years[36813,2]=7
+tonnage_combine_all_years=tonnage_combine_all_years[order(tonnage_combine_all_years$LINE_SEG_NBR,tonnage_combine_all_years$TRACK_SDTK_NBR,tonnage_combine_all_years$MILEPOST_START,tonnage_combine_all_years$YEAR,tonnage_combine_all_years$MONTH),]
+
+######**************************************************************************************************************************************************************************
+######**************************************************************************************************************************************************************************
+######**************************************************************************************************************************************************************************
+
+# unique defect position for 3_1
+any(train_surface$LINE_SEG_NBR==3 & train_surface$TRACK_SDTK_NBR==1)
+train_surface_3_1=subset(train_surface_line_track_milepost,train_surface_line_track_milepost$LINE_SEG_NBR==3 & train_surface_line_track_milepost$TRACK_SDTK_NBR==1)
+uniq_defect_pos_3_1=uniq_defect_position1(train_surface_3_1)
+length(uniq_defect_pos_3_1) ## 761
+train_surface_3_1=mile_post_uniq(train_surface_3_1,uniq_defect_pos_3_1)
+train_surface_3_1_no_day=remove_same_day_repeat(train_surface_3_1)
+train_surface_3_1_no_day_no_single=remove_single_obs(train_surface_3_1_no_day)
+length(levels(as.factor(train_surface_3_1_no_day_no_single$MILEPOST)))  ##429
+## here we have 429 unique defect positions now we will make two datasets one as train and test dataset 80 and 20%
+429*0.20 ##85.8 =~86 unique defect positions will be in our test data and remaining 429-86 willbe in our train data
+surface_sample_pos_3_1=sample(1:429,86) # SRSWOR sample of size 86 from 429 
+surface_uniq_pos_3_1=levels(as.factor(train_surface_3_1_no_day_no_single$MILEPOST))
+surface_uniq_pos_train_3_1=surface_uniq_pos_3_1[-surface_sample_pos_3_1]
+surface_uniq_pos_test_3_1=surface_uniq_pos_3_1[surface_sample_pos_3_1]
+train_surface_3_1_no_day_no_single_trn=subset(train_surface_3_1_no_day_no_single,train_surface_3_1_no_day_no_single$MILEPOST %in% surface_uniq_pos_train_3_1)
+train_surface_3_1_no_day_no_single_tst=subset(train_surface_3_1_no_day_no_single,train_surface_3_1_no_day_no_single$MILEPOST %in% surface_uniq_pos_test_3_1)
+
+######**************************************************************************************************************************************************************************
+######**************************************************************************************************************************************************************************
+######**************************************************************************************************************************************************************************
+
+# unique defect position for 3_2
+any(train_surface$LINE_SEG_NBR==3 & train_surface$TRACK_SDTK_NBR==2)
+train_surface_3_2=subset(train_surface_line_track_milepost,train_surface_line_track_milepost$LINE_SEG_NBR==3 & train_surface_line_track_milepost$TRACK_SDTK_NBR==2)
+uniq_defect_pos_3_2=uniq_defect_position1(train_surface_3_2)
+length(uniq_defect_pos_3_2) ## 553
+train_surface_3_2=mile_post_uniq(train_surface_3_2,uniq_defect_pos_3_2)
+train_surface_3_2_no_day=remove_same_day_repeat(train_surface_3_2)
+train_surface_3_2_no_day_no_single=remove_single_obs(train_surface_3_2_no_day)
+length(levels(as.factor(train_surface_3_2_no_day_no_single$MILEPOST)))  ##314
+## here we have 314 unique defect positions now we will make two datasets one as train and test dataset 80 and 20%
+314*0.20 ##62.8 =~63 unique defect positions will be in our test data and remaining 314-63 willbe in our train data
+surface_sample_pos_3_2=sample(1:314,63) # SRSWOR sample of size 63 from 314 
+surface_uniq_pos_3_2=levels(as.factor(train_surface_3_2_no_day_no_single$MILEPOST))
+surface_uniq_pos_train_3_2=surface_uniq_pos_3_2[-surface_sample_pos_3_2]
+surface_uniq_pos_test_3_2=surface_uniq_pos_3_2[surface_sample_pos_3_2]
+train_surface_3_2_no_day_no_single_trn=subset(train_surface_3_2_no_day_no_single,train_surface_3_2_no_day_no_single$MILEPOST %in% surface_uniq_pos_train_3_2)
+train_surface_3_2_no_day_no_single_tst=subset(train_surface_3_2_no_day_no_single,train_surface_3_2_no_day_no_single$MILEPOST %in% surface_uniq_pos_test_3_2)
+
+######**************************************************************************************************************************************************************************
+######**************************************************************************************************************************************************************************
+######**************************************************************************************************************************************************************************
+
+length(which(testing_data$DFCT_TYPE=='SURFACE' & testing_data$LINE_SEG_NBR==4))
+# 0 Shows that there is no data satisfying the condition in the test data
+
+######**************************************************************************************************************************************************************************
+######**************************************************************************************************************************************************************************
+######**************************************************************************************************************************************************************************
+
+#@@@@@@@@@@@@@@@@@@@@@@@@@@12345678901234567890-12345678902345678902134567890-234567890-34567890-234567890-234567890-34567890234567890324567890234567890234567890-
+#@@@@@@@@@@@@@@@@@@@@@@@@@@12345678901234567890-12345678902345678902134567890-234567890-34567890-234567890-234567890-34567890234567890324567890234567890234567890-
+#@@@@@@@@@@@@@@@@@@@@@@@@@@12345678901234567890-12345678902345678902134567890-234567890-34567890-234567890-234567890-34567890234567890324567890234567890234567890-
+#@@@@@@@@@@@@@@@@@@@@@@@@@@12345678901234567890-12345678902345678902134567890-234567890-34567890-234567890-234567890-34567890234567890324567890234567890234567890-
+
+
+# now we will do the same work for DIP Type of defect
+train_dip$TEST_DT=as.Date(train_dip$TEST_DT,format="%d%b%Y")
+train_dip=train_dip[order(train_dip$LINE_SEG_NBR,train_dip$TRACK_SDTK_NBR,train_dip$TEST_DT,train_dip$MILEPOST),]
+summary(train_dip)
+train_dip_line_track_milepost=train_dip[order(train_dip$LINE_SEG_NBR,train_dip$TRACK_SDTK_NBR,train_dip$MILEPOST),]
+View(train_dip_line_track_milepost)
+
+######**************************************************************************************************************************************************************************
+######**************************************************************************************************************************************************************************
+######**************************************************************************************************************************************************************************
+
+#### line seg 1 and track 0
+train_dip_1_0=subset(train_dip_line_track_milepost,train_dip_line_track_milepost$LINE_SEG_NBR==1 & train_dip_line_track_milepost$TRACK_SDTK_NBR==0)
+View(train_dip_1_0)
+uniq_defect_pos_1_0_dip=uniq_defect_position1(train_dip_1_0)
+uniq_defect_pos_1_0_dip
+length(uniq_defect_pos_1_0_dip) ## 340
+train_dip_1_0=mile_post_uniq(train_dip_1_0,uniq_defect_pos_1_0_dip)
+View(train_dip_1_0)
+train_dip_1_0_no_day=remove_same_day_repeat(train_dip_1_0)
+train_dip_1_0_no_day_no_single=remove_single_obs(train_dip_1_0_no_day)
+length(levels(as.factor(train_dip_1_0_no_day_no_single$MILEPOST)))  ##182
+## here we have 182 unique defect positions now we will make two datasets one as train and test dataset 80 and 20%
+182*0.20 ##36.4 =~36 unique defect positions will be in our test data and remaining 182-36 willbe in our train data
+dip_sample_pos_1_0=sample(1:182,36) # SRSWOR sample of size 36 from 182 
+dip_uniq_pos_1_0=levels(as.factor(train_dip_1_0_no_day_no_single$MILEPOST))
+dip_uniq_pos_train_1_0=dip_uniq_pos_1_0[-dip_sample_pos_1_0]
+dip_uniq_pos_test_1_0=dip_uniq_pos_1_0[dip_sample_pos_1_0]
+train_dip_1_0_no_day_no_single_trn=subset(train_dip_1_0_no_day_no_single,train_dip_1_0_no_day_no_single$MILEPOST %in% dip_uniq_pos_train_1_0)
+train_dip_1_0_no_day_no_single_tst=subset(train_dip_1_0_no_day_no_single,train_dip_1_0_no_day_no_single$MILEPOST %in% dip_uniq_pos_test_1_0)
+
+######**************************************************************************************************************************************************************************
+######**************************************************************************************************************************************************************************
+######**************************************************************************************************************************************************************************
+
+#### line seg 2 and track 0
+## problem has occured as at mile post 275.8618694 has no record on tonnage data so we removed them
+train_dip_2_0=subset(train_dip_line_track_milepost,train_dip_line_track_milepost$LINE_SEG_NBR==2 & train_dip_line_track_milepost$TRACK_SDTK_NBR==0)
+uniq_defect_pos_2_0_dip=uniq_defect_position1(train_dip_2_0)
+uniq_defect_pos_2_0_dip
+length(uniq_defect_pos_2_0_dip) ## 291
+train_dip_2_0=mile_post_uniq(train_dip_2_0,uniq_defect_pos_2_0_dip)
+train_dip_2_0_no_day=remove_same_day_repeat(train_dip_2_0)
+train_dip_2_0_no_day_no_single=remove_single_obs(train_dip_2_0_no_day)
+train_dip_2_0_no_day_no_single=train_dip_2_0_no_day_no_single[-which(train_dip_2_0_no_day_no_single$MILEPOST==train_dip_2_0_no_day_no_single[523,2]),] 
+length(levels(as.factor(train_dip_2_0_no_day_no_single$MILEPOST)))  ##137
+## here we have 137 unique defect positions now we will make two datasets one as train and test dataset 80 and 20%
+137*0.20 ##27.4 =~27 unique defect positions will be in our test data and remaining 137-27 willbe in our train data
+dip_sample_pos_2_0=sample(1:137,27) # SRSWOR sample of size 27 from 137 
+dip_uniq_pos_2_0=levels(as.factor(train_dip_2_0_no_day_no_single$MILEPOST))
+dip_uniq_pos_train_2_0=dip_uniq_pos_2_0[-dip_sample_pos_2_0]
+dip_uniq_pos_test_2_0=dip_uniq_pos_2_0[dip_sample_pos_2_0]
+train_dip_2_0_no_day_no_single_trn=subset(train_dip_2_0_no_day_no_single,train_dip_2_0_no_day_no_single$MILEPOST %in% dip_uniq_pos_train_2_0)
+train_dip_2_0_no_day_no_single_tst=subset(train_dip_2_0_no_day_no_single,train_dip_2_0_no_day_no_single$MILEPOST %in% dip_uniq_pos_test_2_0)
+
+######**************************************************************************************************************************************************************************
+######**************************************************************************************************************************************************************************
+######**************************************************************************************************************************************************************************
+
+train_dip_2_1=subset(train_dip_line_track_milepost,train_dip_line_track_milepost$LINE_SEG_NBR==2 & train_dip_line_track_milepost$TRACK_SDTK_NBR==1)
+uniq_defect_pos_2_1_dip=uniq_defect_position1(train_dip_2_1)
+uniq_defect_pos_2_1_dip
+length(uniq_defect_pos_2_1_dip) ## 
+train_dip_2_1=mile_post_uniq(train_dip_2_1,uniq_defect_pos_2_1_dip)
+train_dip_2_1_no_day=remove_same_day_repeat(train_dip_2_1)
+train_dip_2_1_no_day_no_single=remove_single_obs(train_dip_2_1_no_day)
+length(levels(as.factor(train_dip_2_1_no_day_no_single$MILEPOST)))  ##22
+## here we have 22 unique defect positions now we will make two datasets one as train and test dataset 80 and 20%
+22*0.20 ##4.4 =~4 unique defect positions will be in our test data and remaining 22-4 willbe in our train data
+dip_sample_pos_2_1=sample(1:22,4) # SRSWOR sample of size 4 from 22 
+dip_uniq_pos_2_1=levels(as.factor(train_dip_2_1_no_day_no_single$MILEPOST))
+dip_uniq_pos_train_2_1=dip_uniq_pos_2_1[-dip_sample_pos_2_1]
+dip_uniq_pos_test_2_1=dip_uniq_pos_2_1[dip_sample_pos_2_1]
+train_dip_2_1_no_day_no_single_trn=subset(train_dip_2_1_no_day_no_single,train_dip_2_1_no_day_no_single$MILEPOST %in% dip_uniq_pos_train_2_1)
+train_dip_2_1_no_day_no_single_tst=subset(train_dip_2_1_no_day_no_single,train_dip_2_1_no_day_no_single$MILEPOST %in% dip_uniq_pos_test_2_1)
+
+#### line seg 2 and track 2 #### at this line and track combination there is no data in test data so we will not do of it
+#### line seg 3 and track 0  $$$$$ Never asked in the test data set for this line and segment combination
+
+######**************************************************************************************************************************************************************************
+######**************************************************************************************************************************************************************************
+######**************************************************************************************************************************************************************************
+
+#### line seg 3 and track 1
+length(which(train_dip$LINE_SEG_NBR==3 & train_dip$TRACK_SDTK_NBR==1))
+train_dip_3_1=subset(train_dip_line_track_milepost,train_dip_line_track_milepost$LINE_SEG_NBR==3 & train_dip_line_track_milepost$TRACK_SDTK_NBR==1)
+uniq_defect_pos_3_1_dip=uniq_defect_position1(train_dip_3_1)
+uniq_defect_pos_3_1_dip
+length(uniq_defect_pos_3_1_dip) ## 
+train_dip_3_1=mile_post_uniq(train_dip_3_1,uniq_defect_pos_3_1_dip)
+train_dip_3_1_no_day=remove_same_day_repeat(train_dip_3_1)
+train_dip_3_1_no_day_no_single=remove_single_obs(train_dip_3_1_no_day)
+length(levels(as.factor(train_dip_3_1_no_day_no_single$MILEPOST)))  ##236
+## here we have 236 unique defect positions now we will make two datasets one as train and test dataset 80 and 20%
+236*0.20 ##47.2=~47 unique defect positions will be in our test data and remaining 236-47 willbe in our train data
+dip_sample_pos_3_1=sample(1:236,47) # SRSWOR sample of size 47 from 236 
+dip_uniq_pos_3_1=levels(as.factor(train_dip_3_1_no_day_no_single$MILEPOST))
+dip_uniq_pos_train_3_1=dip_uniq_pos_3_1[-dip_sample_pos_3_1]
+dip_uniq_pos_test_3_1=dip_uniq_pos_3_1[dip_sample_pos_3_1]
+train_dip_3_1_no_day_no_single_trn=subset(train_dip_3_1_no_day_no_single,train_dip_3_1_no_day_no_single$MILEPOST %in% dip_uniq_pos_train_3_1)
+train_dip_3_1_no_day_no_single_tst=subset(train_dip_3_1_no_day_no_single,train_dip_3_1_no_day_no_single$MILEPOST %in% dip_uniq_pos_test_3_1)
+
+######**************************************************************************************************************************************************************************
+######**************************************************************************************************************************************************************************
+######**************************************************************************************************************************************************************************
+
+#### line seg 3 and track 2
+length(which(train_dip$LINE_SEG_NBR==3 & train_dip$TRACK_SDTK_NBR==2))
+train_dip_3_2=subset(train_dip_line_track_milepost,train_dip_line_track_milepost$LINE_SEG_NBR==3 & train_dip_line_track_milepost$TRACK_SDTK_NBR==2)
+uniq_defect_pos_3_2_dip=uniq_defect_position1(train_dip_3_2)
+uniq_defect_pos_3_2_dip
+length(uniq_defect_pos_3_2_dip) ## 
+train_dip_3_2=mile_post_uniq(train_dip_3_2,uniq_defect_pos_3_2_dip)
+train_dip_3_2_no_day=remove_same_day_repeat(train_dip_3_2)
+train_dip_3_2_no_day_no_single=remove_single_obs(train_dip_3_2_no_day)
+length(levels(as.factor(train_dip_3_2_no_day_no_single$MILEPOST)))  ##173
+## here we have 173 unique defect positions now we will make two datasets one as train and test dataset 80 and 20%
+173*0.20 ##34.6=~35 unique defect positions will be in our test data and remaining 173-35 willbe in our train data
+dip_sample_pos_3_2=sample(1:173,35) # SRSWOR sample of size 35 from 173 
+dip_uniq_pos_3_2=levels(as.factor(train_dip_3_2_no_day_no_single$MILEPOST))
+dip_uniq_pos_train_3_2=dip_uniq_pos_3_2[-dip_sample_pos_3_2]
+dip_uniq_pos_test_3_2=dip_uniq_pos_3_2[dip_sample_pos_3_2]
+train_dip_3_2_no_day_no_single_trn=subset(train_dip_3_2_no_day_no_single,train_dip_3_2_no_day_no_single$MILEPOST %in% dip_uniq_pos_train_3_2)
+train_dip_3_2_no_day_no_single_tst=subset(train_dip_3_2_no_day_no_single,train_dip_3_2_no_day_no_single$MILEPOST %in% dip_uniq_pos_test_3_2)
+
+
+#### line seg 3 and track 3 ### Never asked in the test data set
+
+######**************************************************************************************************************************************************************************
+######**************************************************************************************************************************************************************************
+######**************************************************************************************************************************************************************************
+
+#### line seg 4 and track 0
+length(which(train_dip$LINE_SEG_NBR==4 & train_dip$TRACK_SDTK_NBR==0))
+train_dip_4_0=subset(train_dip_line_track_milepost,train_dip_line_track_milepost$LINE_SEG_NBR==4 & train_dip_line_track_milepost$TRACK_SDTK_NBR==0)
+uniq_defect_pos_4_0_dip=uniq_defect_position1(train_dip_4_0)
+uniq_defect_pos_4_0_dip
+length(uniq_defect_pos_4_0_dip) ## 300
+train_dip_4_0=mile_post_uniq(train_dip_4_0,uniq_defect_pos_4_0_dip)
+train_dip_4_0_no_day=remove_same_day_repeat(train_dip_4_0)
+train_dip_4_0_no_day_no_single=remove_single_obs(train_dip_4_0_no_day)
+# Some problem was occurring at the below given position So we have removed that # Again Run the below code only once
+# problem is occurring at milepost 12.0795494 so remove that point 
+train_dip_4_0_no_day_no_single=train_dip_4_0_no_day_no_single[-which(train_dip_4_0_no_day_no_single$MILEPOST==train_dip_4_0_no_day_no_single[8,2]),]
+train_dip_4_0_no_day_no_single=train_dip_4_0_no_day_no_single[-which(train_dip_4_0_no_day_no_single$MILEPOST==train_dip_4_0_no_day_no_single[9,2]),]
+train_dip_4_0_no_day_no_single=train_dip_4_0_no_day_no_single[-which(train_dip_4_0_no_day_no_single$MILEPOST==train_dip_4_0_no_day_no_single[9,2]),]
+train_dip_4_0_no_day_no_single=train_dip_4_0_no_day_no_single[-which(train_dip_4_0_no_day_no_single$MILEPOST==train_dip_4_0_no_day_no_single[13,2]),]
+train_dip_4_0_no_day_no_single=train_dip_4_0_no_day_no_single[-which(train_dip_4_0_no_day_no_single$MILEPOST==train_dip_4_0_no_day_no_single[18,2]),]
+train_dip_4_0_no_day_no_single=train_dip_4_0_no_day_no_single[-which(train_dip_4_0_no_day_no_single$MILEPOST==train_dip_4_0_no_day_no_single[16,2]),]
+train_dip_4_0_no_day_no_single=train_dip_4_0_no_day_no_single[-which(train_dip_4_0_no_day_no_single$MILEPOST==train_dip_4_0_no_day_no_single[21,2]),]
+train_dip_4_0_no_day_no_single=train_dip_4_0_no_day_no_single[-which(train_dip_4_0_no_day_no_single$MILEPOST==train_dip_4_0_no_day_no_single[21,2]),]
+
+length(levels(as.factor(train_dip_4_0_no_day_no_single$MILEPOST)))  ##129
+## here we have 129 unique defect positions now we will make two datasets one as train and test dataset 80 and 20%
+129*0.20 ##25.8 =~26 unique defect positions will be in our test data and remaining 129-26 willbe in our train data
+dip_sample_pos_4_0=sample(1:129,26) # SRSWOR sample of size 26 from 129 
+dip_uniq_pos_4_0=levels(as.factor(train_dip_4_0_no_day_no_single$MILEPOST))
+dip_uniq_pos_train_4_0=dip_uniq_pos_4_0[-dip_sample_pos_4_0]
+dip_uniq_pos_test_4_0=dip_uniq_pos_4_0[dip_sample_pos_4_0]
+train_dip_4_0_no_day_no_single_trn=subset(train_dip_4_0_no_day_no_single,train_dip_4_0_no_day_no_single$MILEPOST %in% dip_uniq_pos_train_4_0)
+train_dip_4_0_no_day_no_single_tst=subset(train_dip_4_0_no_day_no_single,train_dip_4_0_no_day_no_single$MILEPOST %in% dip_uniq_pos_test_4_0)
+
+
+#### line seg 4 and track 1 #### Never asked in the test data set
+#### line seg 4 and track 2  #### Never asked in the test data set
+#### line seg 4 and track 3  #### Never asked in the test data set
+#### line seg 4 and track 4  #### Never asked in the test data set
+#### line seg 4 and track 5  #### Never asked in the test data set
+#### line seg 4 and track 6   #### Never asked in the test data set
+
+#@@@@@@@@@@@@@@@@@@@@@@@@@@12345678901234567890-12345678902345678902134567890-234567890-34567890-234567890-234567890-34567890234567890324567890234567890234567890-
+#@@@@@@@@@@@@@@@@@@@@@@@@@@12345678901234567890-12345678902345678902134567890-234567890-34567890-234567890-234567890-34567890234567890324567890234567890234567890-
+#@@@@@@@@@@@@@@@@@@@@@@@@@@12345678901234567890-12345678902345678902134567890-234567890-34567890-234567890-234567890-34567890234567890324567890234567890234567890-
+#@@@@@@@@@@@@@@@@@@@@@@@@@@12345678901234567890-12345678902345678902134567890-234567890-34567890-234567890-234567890-34567890234567890324567890234567890234567890-
+
+# now we will do the same work for XLEVEL Type of defect
+train_xlevel$TEST_DT=as.Date(train_xlevel$TEST_DT,format="%d%b%Y")
+train_xlevel=train_xlevel[order(train_xlevel$LINE_SEG_NBR,train_xlevel$TRACK_SDTK_NBR,train_xlevel$TEST_DT,train_xlevel$MILEPOST),]
+summary(train_xlevel)
+train_xlevel_line_track_milepost=train_xlevel[order(train_xlevel$LINE_SEG_NBR,train_xlevel$TRACK_SDTK_NBR,train_xlevel$MILEPOST),]
+View(train_xlevel_line_track_milepost)
+
+######**************************************************************************************************************************************************************************
+######**************************************************************************************************************************************************************************
+######**************************************************************************************************************************************************************************
+
+#### line seg 1 and track 0
+train_xlevel_1_0=subset(train_xlevel_line_track_milepost,train_xlevel_line_track_milepost$LINE_SEG_NBR==1 & train_xlevel_line_track_milepost$TRACK_SDTK_NBR==0)
+View(train_xlevel_1_0)
+uniq_defect_pos_1_0_xlevel=uniq_defect_position1(train_xlevel_1_0)
+uniq_defect_pos_1_0_xlevel
+length(uniq_defect_pos_1_0_xlevel) ## 340
+train_xlevel_1_0=mile_post_uniq(train_xlevel_1_0,uniq_defect_pos_1_0_xlevel)
+View(train_xlevel_1_0)
+train_xlevel_1_0_no_day=remove_same_day_repeat(train_xlevel_1_0)
+train_xlevel_1_0_no_day_no_single=remove_single_obs(train_xlevel_1_0_no_day)
+View(train_xlevel_1_0_no_day_no_single)
+train_xlevel_1_0_no_day_no_single=train_xlevel_1_0_no_day_no_single[-which(train_xlevel_1_0_no_day_no_single$MILEPOST==train_xlevel_1_0_no_day_no_single[45,2]),]
+train_xlevel_1_0_no_day_no_single=train_xlevel_1_0_no_day_no_single[-which(train_xlevel_1_0_no_day_no_single$MILEPOST==train_xlevel_1_0_no_day_no_single[46,2]),]
+train_xlevel_1_0_no_day_no_single=train_xlevel_1_0_no_day_no_single[-which(train_xlevel_1_0_no_day_no_single$MILEPOST==train_xlevel_1_0_no_day_no_single[46,2]),]
+length(levels(as.factor(train_xlevel_1_0_no_day_no_single$MILEPOST)))  ##399
+## here we have 399 unique defect positions now we will make two datasets one as train and test dataset 80 and 20%
+399*0.20 ##79.8 =~80 unique defect positions will be in our test data and remaining 399-80 willbe in our train data
+xlevel_sample_pos_1_0=sample(1:399,80) # SRSWOR sample of size 80 from 399 
+xlevel_uniq_pos_1_0=levels(as.factor(train_xlevel_1_0_no_day_no_single$MILEPOST))
+xlevel_uniq_pos_train_1_0=xlevel_uniq_pos_1_0[-xlevel_sample_pos_1_0]
+xlevel_uniq_pos_test_1_0=xlevel_uniq_pos_1_0[xlevel_sample_pos_1_0]
+train_xlevel_1_0_no_day_no_single_trn=subset(train_xlevel_1_0_no_day_no_single,train_xlevel_1_0_no_day_no_single$MILEPOST %in% xlevel_uniq_pos_train_1_0)
+train_xlevel_1_0_no_day_no_single_tst=subset(train_xlevel_1_0_no_day_no_single,train_xlevel_1_0_no_day_no_single$MILEPOST %in% xlevel_uniq_pos_test_1_0)
+
+######**************************************************************************************************************************************************************************
+######**************************************************************************************************************************************************************************
+######**************************************************************************************************************************************************************************
+
+#### line seg 2 and track 0
+length(which(train_xlevel$LINE_SEG_NBR==2 & train_xlevel$TRACK_SDTK_NBR==0))
+train_xlevel_2_0=subset(train_xlevel_line_track_milepost,train_xlevel_line_track_milepost$LINE_SEG_NBR==2 & train_xlevel_line_track_milepost$TRACK_SDTK_NBR==0)
+uniq_defect_pos_2_0_xlevel=uniq_defect_position1(train_xlevel_2_0)
+uniq_defect_pos_2_0_xlevel
+length(uniq_defect_pos_2_0_xlevel)
+train_xlevel_2_0=mile_post_uniq(train_xlevel_2_0,uniq_defect_pos_2_0_xlevel)
+train_xlevel_2_0_no_day=remove_same_day_repeat(train_xlevel_2_0)
+train_xlevel_2_0_no_day_no_single=remove_single_obs(train_xlevel_2_0_no_day)
+train_xlevel_2_0_no_day_no_single=train_xlevel_2_0_no_day_no_single[-which(train_xlevel_2_0_no_day_no_single$MILEPOST==train_xlevel_2_0_no_day_no_single[604,2]),]
+length(levels(as.factor(train_xlevel_2_0_no_day_no_single$MILEPOST)))  ##484
+## here we have 484 unique defect positions now we will make two datasets one as train and test dataset 80 and 20%
+484*0.20 ##96.8 =~97 unique defect positions will be in our test data and remaining 484-97 willbe in our train data
+xlevel_sample_pos_2_0=sample(1:484,97) # SRSWOR sample of size 97 from 484 
+xlevel_uniq_pos_2_0=levels(as.factor(train_xlevel_2_0_no_day_no_single$MILEPOST))
+xlevel_uniq_pos_train_2_0=xlevel_uniq_pos_2_0[-xlevel_sample_pos_2_0]
+xlevel_uniq_pos_test_2_0=xlevel_uniq_pos_2_0[xlevel_sample_pos_2_0]
+train_xlevel_2_0_no_day_no_single_trn=subset(train_xlevel_2_0_no_day_no_single,train_xlevel_2_0_no_day_no_single$MILEPOST %in% xlevel_uniq_pos_train_2_0)
+train_xlevel_2_0_no_day_no_single_tst=subset(train_xlevel_2_0_no_day_no_single,train_xlevel_2_0_no_day_no_single$MILEPOST %in% xlevel_uniq_pos_test_2_0)
+
+######**************************************************************************************************************************************************************************
+######**************************************************************************************************************************************************************************
+######**************************************************************************************************************************************************************************
+
+#### line seg 2 and track 1
+length(which(train_xlevel$LINE_SEG_NBR==2 & train_xlevel$TRACK_SDTK_NBR==1))
+train_xlevel_2_1=subset(train_xlevel_line_track_milepost,train_xlevel_line_track_milepost$LINE_SEG_NBR==2 & train_xlevel_line_track_milepost$TRACK_SDTK_NBR==1)
+uniq_defect_pos_2_1_xlevel=uniq_defect_position1(train_xlevel_2_1)
+uniq_defect_pos_2_1_xlevel
+length(uniq_defect_pos_2_1_xlevel)
+train_xlevel_2_1=mile_post_uniq(train_xlevel_2_1,uniq_defect_pos_2_1_xlevel)
+train_xlevel_2_1_no_day=remove_same_day_repeat(train_xlevel_2_1)
+train_xlevel_2_1_no_day_no_single=remove_single_obs(train_xlevel_2_1_no_day)
+train_xlevel_2_1_no_day_no_single=train_xlevel_2_1_no_day_no_single[-which(train_xlevel_2_1_no_day_no_single$MILEPOST==train_xlevel_2_1_no_day_no_single[176,2]),]
+train_xlevel_2_1_no_day_no_single=train_xlevel_2_1_no_day_no_single[-which(train_xlevel_2_1_no_day_no_single$MILEPOST==train_xlevel_2_1_no_day_no_single[176,2]),]
+length(levels(as.factor(train_xlevel_2_1_no_day_no_single$MILEPOST)))  ##53
+## here we have 53 unique defect positions now we will make two datasets one as train and test dataset 80 and 20%
+53*0.20 ##10.6 =~11 unique defect positions will be in our test data and remaining 53-11 willbe in our train data
+xlevel_sample_pos_2_1=sample(1:53,11) # SRSWOR sample of size 11 from 53 
+xlevel_uniq_pos_2_1=levels(as.factor(train_xlevel_2_1_no_day_no_single$MILEPOST))
+xlevel_uniq_pos_train_2_1=xlevel_uniq_pos_2_1[-xlevel_sample_pos_2_1]
+xlevel_uniq_pos_test_2_1=xlevel_uniq_pos_2_1[xlevel_sample_pos_2_1]
+train_xlevel_2_1_no_day_no_single_trn=subset(train_xlevel_2_1_no_day_no_single,train_xlevel_2_1_no_day_no_single$MILEPOST %in% xlevel_uniq_pos_train_2_1)
+train_xlevel_2_1_no_day_no_single_tst=subset(train_xlevel_2_1_no_day_no_single,train_xlevel_2_1_no_day_no_single$MILEPOST %in% xlevel_uniq_pos_test_2_1)
+
+######**************************************************************************************************************************************************************************
+######**************************************************************************************************************************************************************************
+######**************************************************************************************************************************************************************************
+
+#### line seg 2 and track 2
+length(which(train_xlevel$LINE_SEG_NBR==2 & train_xlevel$TRACK_SDTK_NBR==2))
+train_xlevel_2_2=subset(train_xlevel_line_track_milepost,train_xlevel_line_track_milepost$LINE_SEG_NBR==2 & train_xlevel_line_track_milepost$TRACK_SDTK_NBR==2)
+uniq_defect_pos_2_2_xlevel=uniq_defect_position1(train_xlevel_2_2)
+uniq_defect_pos_2_2_xlevel
+length(uniq_defect_pos_2_2_xlevel)
+train_xlevel_2_2=mile_post_uniq(train_xlevel_2_2,uniq_defect_pos_2_2_xlevel)
+train_xlevel_2_2_no_day=remove_same_day_repeat(train_xlevel_2_2)
+train_xlevel_2_2_no_day_no_single=remove_single_obs(train_xlevel_2_2_no_day)
+length(levels(as.factor(train_xlevel_2_2_no_day_no_single$MILEPOST)))  ##60
+## here we have 60 unique defect positions now we will make two datasets one as train and test dataset 80 and 20%
+60*0.20 ##12 unique defect positions will be in our test data and remaining 60-11 willbe in our train data
+xlevel_sample_pos_2_2=sample(1:60,12) # SRSWOR sample of size 12 from 60 
+xlevel_uniq_pos_2_2=levels(as.factor(train_xlevel_2_2_no_day_no_single$MILEPOST))
+xlevel_uniq_pos_train_2_2=xlevel_uniq_pos_2_2[-xlevel_sample_pos_2_2]
+xlevel_uniq_pos_test_2_2=xlevel_uniq_pos_2_2[xlevel_sample_pos_2_2]
+train_xlevel_2_2_no_day_no_single_trn=subset(train_xlevel_2_2_no_day_no_single,train_xlevel_2_2_no_day_no_single$MILEPOST %in% xlevel_uniq_pos_train_2_2)
+train_xlevel_2_2_no_day_no_single_tst=subset(train_xlevel_2_2_no_day_no_single,train_xlevel_2_2_no_day_no_single$MILEPOST %in% xlevel_uniq_pos_test_2_2)
+
+######**************************************************************************************************************************************************************************
+######**************************************************************************************************************************************************************************
+######**************************************************************************************************************************************************************************
+
+#### line seg 3 and track 1
+length(which(train_xlevel$LINE_SEG_NBR==3 & train_xlevel$TRACK_SDTK_NBR==1))
+train_xlevel_3_1=subset(train_xlevel_line_track_milepost,train_xlevel_line_track_milepost$LINE_SEG_NBR==3 & train_xlevel_line_track_milepost$TRACK_SDTK_NBR==1)
+uniq_defect_pos_3_1_xlevel=uniq_defect_position1(train_xlevel_3_1)
+uniq_defect_pos_3_1_xlevel
+length(uniq_defect_pos_3_1_xlevel)
+train_xlevel_3_1=mile_post_uniq(train_xlevel_3_1,uniq_defect_pos_3_1_xlevel)
+train_xlevel_3_1_no_day=remove_same_day_repeat(train_xlevel_3_1)
+train_xlevel_3_1_no_day_no_single=remove_single_obs(train_xlevel_3_1_no_day)
+length(levels(as.factor(train_xlevel_3_1_no_day_no_single$MILEPOST)))  ##293
+## here we have 293 unique defect positions now we will make two datasets one as train and test dataset 80 and 20%
+293*0.20 ##58.6 =~57 unique defect positions will be in our test data and remaining 293-57 willbe in our train data
+xlevel_sample_pos_3_1=sample(1:293,57) # SRSWOR sample of size 57 from 293 
+xlevel_uniq_pos_3_1=levels(as.factor(train_xlevel_3_1_no_day_no_single$MILEPOST))
+xlevel_uniq_pos_train_3_1=xlevel_uniq_pos_3_1[-xlevel_sample_pos_3_1]
+xlevel_uniq_pos_test_3_1=xlevel_uniq_pos_3_1[xlevel_sample_pos_3_1]
+train_xlevel_3_1_no_day_no_single_trn=subset(train_xlevel_3_1_no_day_no_single,train_xlevel_3_1_no_day_no_single$MILEPOST %in% xlevel_uniq_pos_train_3_1)
+train_xlevel_3_1_no_day_no_single_tst=subset(train_xlevel_3_1_no_day_no_single,train_xlevel_3_1_no_day_no_single$MILEPOST %in% xlevel_uniq_pos_test_3_1)
+
+######**************************************************************************************************************************************************************************
+######**************************************************************************************************************************************************************************
+######**************************************************************************************************************************************************************************
+
+#### line seg 3 and track 2
+length(which(train_xlevel$LINE_SEG_NBR==3 & train_xlevel$TRACK_SDTK_NBR==2))
+train_xlevel_3_2=subset(train_xlevel_line_track_milepost,train_xlevel_line_track_milepost$LINE_SEG_NBR==3 & train_xlevel_line_track_milepost$TRACK_SDTK_NBR==2)
+uniq_defect_pos_3_2_xlevel=uniq_defect_position1(train_xlevel_3_2)
+uniq_defect_pos_3_2_xlevel
+length(uniq_defect_pos_3_2_xlevel)
+train_xlevel_3_2=mile_post_uniq(train_xlevel_3_2,uniq_defect_pos_3_2_xlevel)
+train_xlevel_3_2_no_day=remove_same_day_repeat(train_xlevel_3_2)
+train_xlevel_3_2_no_day_no_single=remove_single_obs(train_xlevel_3_2_no_day)
+length(levels(as.factor(train_xlevel_3_2_no_day_no_single$MILEPOST)))  ##254
+## here we have 254 unique defect positions now we will make two datasets one as train and test dataset 80 and 20%
+254*0.20 ##50.8 =~51 unique defect positions will be in our test data and remaining 254-51 willbe in our train data
+xlevel_sample_pos_3_2=sample(1:254,51) # SRSWOR sample of size 51 from 254
+xlevel_uniq_pos_3_2=levels(as.factor(train_xlevel_3_2_no_day_no_single$MILEPOST))
+xlevel_uniq_pos_train_3_2=xlevel_uniq_pos_3_2[-xlevel_sample_pos_3_2]
+xlevel_uniq_pos_test_3_2=xlevel_uniq_pos_3_2[xlevel_sample_pos_3_2]
+train_xlevel_3_2_no_day_no_single_trn=subset(train_xlevel_3_2_no_day_no_single,train_xlevel_3_2_no_day_no_single$MILEPOST %in% xlevel_uniq_pos_train_3_2)
+train_xlevel_3_2_no_day_no_single_tst=subset(train_xlevel_3_2_no_day_no_single,train_xlevel_3_2_no_day_no_single$MILEPOST %in% xlevel_uniq_pos_test_3_2)
+
+#### line seg 3 and track 3  #### never asked in tets data set
+
+######**************************************************************************************************************************************************************************
+######**************************************************************************************************************************************************************************
+######**************************************************************************************************************************************************************************
+
+#### line seg 4 and track 0
+length(which(train_xlevel$LINE_SEG_NBR==4 & train_xlevel$TRACK_SDTK_NBR==0))
+train_xlevel_4_0=subset(train_xlevel_line_track_milepost,train_xlevel_line_track_milepost$LINE_SEG_NBR==4 & train_xlevel_line_track_milepost$TRACK_SDTK_NBR==0)
+uniq_defect_pos_4_0_xlevel=uniq_defect_position1(train_xlevel_4_0)
+uniq_defect_pos_4_0_xlevel
+length(uniq_defect_pos_4_0_xlevel)
+train_xlevel_4_0=mile_post_uniq(train_xlevel_4_0,uniq_defect_pos_4_0_xlevel)
+train_xlevel_4_0_no_day=remove_same_day_repeat(train_xlevel_4_0)
+train_xlevel_4_0_no_day_no_single=remove_single_obs(train_xlevel_4_0_no_day)
+train_xlevel_4_0_no_day_no_single=train_xlevel_4_0_no_day_no_single[-which(train_xlevel_4_0_no_day_no_single$MILEPOST==train_xlevel_4_0_no_day_no_single[9,2]),]
+train_xlevel_4_0_no_day_no_single=train_xlevel_4_0_no_day_no_single[-which(train_xlevel_4_0_no_day_no_single$MILEPOST==train_xlevel_4_0_no_day_no_single[14,2]),]
+train_xlevel_4_0_no_day_no_single=train_xlevel_4_0_no_day_no_single[-which(train_xlevel_4_0_no_day_no_single$MILEPOST==train_xlevel_4_0_no_day_no_single[19,2]),]
+train_xlevel_4_0_no_day_no_single=train_xlevel_4_0_no_day_no_single[-which(train_xlevel_4_0_no_day_no_single$MILEPOST==train_xlevel_4_0_no_day_no_single[490,2]),]
+train_xlevel_4_0_no_day_no_single=train_xlevel_4_0_no_day_no_single[-which(train_xlevel_4_0_no_day_no_single$MILEPOST==train_xlevel_4_0_no_day_no_single[490,2]),]
+length(levels(as.factor(train_xlevel_4_0_no_day_no_single$MILEPOST)))  ##156
+## here we have 155 unique defect positions now we will make two datasets one as train and test dataset 80 and 20%
+156*0.20 ##31.2 =~31 unique defect positions will be in our test data and remaining 155-31 willbe in our train data
+xlevel_sample_pos_4_0=sample(1:155,31) # SRSWOR sample of size 31 from 155 
+xlevel_uniq_pos_4_0=levels(as.factor(train_xlevel_4_0_no_day_no_single$MILEPOST))
+xlevel_uniq_pos_train_4_0=xlevel_uniq_pos_4_0[-xlevel_sample_pos_4_0]
+xlevel_uniq_pos_test_4_0=xlevel_uniq_pos_4_0[xlevel_sample_pos_4_0]
+train_xlevel_4_0_no_day_no_single_trn=subset(train_xlevel_4_0_no_day_no_single,train_xlevel_4_0_no_day_no_single$MILEPOST %in% xlevel_uniq_pos_train_4_0)
+train_xlevel_4_0_no_day_no_single_tst=subset(train_xlevel_4_0_no_day_no_single,train_xlevel_4_0_no_day_no_single$MILEPOST %in% xlevel_uniq_pos_test_4_0)
+
+#### line seg 4 and track 1  ### Never asked
+#### line seg 4 and track 2  ### Never asked
 
 
 
